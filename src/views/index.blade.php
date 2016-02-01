@@ -340,7 +340,18 @@
     });
 
     function useFile(file) {
+
         var path = $('#working_dir').val();
+
+        var item_url = "{{ Config::get('lfm.images_url') }}";
+
+        @if ((Session::has('lfm_type')) && (Session::get('lfm_type') != "Images"))
+        item_url = "{{ Config::get('lfm.files_url') }}";
+        @endif
+
+        if (path != '/') {
+            item_url = item_url + path + '/';
+        }
 
         function getUrlParam(paramName) {
             var reParam = new RegExp('(?:[\?&]|&)' + paramName + '=([^&]+)', 'i');
@@ -348,22 +359,66 @@
             return ( match && match.length > 1 ) ? match[1] : null;
         }
 
-        var funcNum = getUrlParam('CKEditorFuncNum');
-        window.opener.CKEDITOR.tools.callFunction(funcNum, path + "/" + file);
+        var field_name = getUrlParam('field_name');
+        var url = item_url + file;
 
-        @if ((Session::has('lfm_type')) && (Session::get('lfm_type') == "Images"))
-            if (path != '/') {
-                window.opener.CKEDITOR.tools.callFunction(funcNum, '{{ \Config::get('lfm.images_url') }}' + path + "/" + file);
-            } else {
-                window.opener.CKEDITOR.tools.callFunction(funcNum, '{{ \Config::get('lfm.images_url') }}' + file);
+        if(window.opener || window.tinyMCEPopup || field_name || getUrlParam('CKEditorCleanUpFuncNum') || getUrlParam('CKEditor')) {
+            if(window.tinyMCEPopup){
+                // use TinyMCE > 3.0 integration method
+                var win = tinyMCEPopup.getWindowArg("window");
+                win.document.getElementById(tinyMCEPopup.getWindowArg("input")).value = url;
+                if (typeof(win.ImageDialog) != "undefined") {
+                    // Update image dimensions
+                    if (win.ImageDialog.getImageData)
+                        win.ImageDialog.getImageData();
+                    // Preview if necessary
+                    if (win.ImageDialog.showPreviewImage)
+                        win.ImageDialog.showPreviewImage(url);
+                }
+                tinyMCEPopup.close();
+                return;
             }
-        @else
-            if (path != '/') {
-            window.opener.CKEDITOR.tools.callFunction(funcNum, '{{ \Config::get('lfm.files_url') }}' + path + "/" + file);
+
+            // tinymce 4 and colorbox
+            if (field_name) {
+                parent.document.getElementById(field_name).value = url;
+                if(typeof parent.tinyMCE !== "undefined") {
+                    parent.tinyMCE.activeEditor.windowManager.close();
+                }
+                if(typeof parent.$.fn.colorbox !== "undefined") {
+                    parent.$.fn.colorbox.close();
+                }
+
+            } else if(getUrlParam('CKEditor')) {
+                // use CKEditor 3.0 + integration method
+                if (window.opener) {
+                    // Popup
+                    window.opener.CKEDITOR.tools.callFunction(getUrlParam('CKEditorFuncNum'), url);
+                } else {
+                    // Modal (in iframe)
+                    parent.CKEDITOR.tools.callFunction(getUrlParam('CKEditorFuncNum'), url);
+                    parent.CKEDITOR.tools.callFunction(getUrlParam('CKEditorCleanUpFuncNum'));
+                }
+
+            } else {
+                // use FCKEditor 2.0 integration method
+                if (data['Properties']['Width'] != '') {
+                    var p = url;
+                    var w = data['Properties']['Width'];
+                    var h = data['Properties']['Height'];
+                    window.opener.SetUrl(p,w,h);
+                } else {
+                    window.opener.SetUrl(url);
+                }
+            }
+
+            if (window.opener) {
+                window.close();
+            }
         } else {
-            window.opener.CKEDITOR.tools.callFunction(funcNum, '{{ \Config::get('lfm.files_url') }}' + file);
+            $.prompt(lg.fck_select_integration);
         }
-        @endif
+
         window.close();
     }
 
